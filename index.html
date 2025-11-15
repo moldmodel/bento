@@ -25,19 +25,17 @@
     }
     .tabs {
       display: flex;
-      flex-wrap: wrap; /* スマホで折り返しOK */
       gap: 8px;
       margin-bottom: 12px;
     }
     .tab-btn {
-      flex: 1 1 calc(50% - 8px); /* スマホで2列になりやすく */
+      flex: 1;
       padding: 10px;
       border-radius: 999px;
       border: 1px solid #ccc;
       background: #eee;
       cursor: pointer;
       font-size: 16px;
-      text-align: center;
     }
     .tab-btn.active {
       background: #4285f4;
@@ -100,6 +98,7 @@
       padding: 5px 6px;
       text-align: left;
       vertical-align: middle;
+      background: #fff;
     }
     .summary {
       margin-top: 4px;
@@ -132,17 +131,19 @@
     }
 
     #orderTableWrapper {
-      max-height: 60vh;   /* 画面高さに応じてスクロール */
+      max-height: 420px;
       overflow-y: auto;
       border-radius: 6px;
       border: 1px solid #ddd;
     }
 
+    /* ★ 週次：スクロール用の枠（ここでoverflowを管理） */
     #weeklyTableWrapper {
-      max-height: 60vh;
+      max-height: 430px;
       overflow: auto;
       border-radius: 6px;
       border: 1px solid #ddd;
+      position: relative; /* sticky用の基準 */
     }
 
     /* 週次：曜日ごとの色分け */
@@ -151,6 +152,28 @@
     }
     th.day-sat, td.day-sat {
       color: #1565c0; /* 青 */
+    }
+
+    /* ★ 週次：ヘッダー行（日付）を上部に固定 */
+    #weeklyTable thead th {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+    }
+
+    /* ★ 週次：社員名の列を左に固定 */
+    #weeklyTable th.sticky-col,
+    #weeklyTable td.sticky-col {
+      position: sticky;
+      left: 0;
+      z-index: 3;
+      background: #fff;  /* スクロール時に下のセルと重ならないように */
+    }
+
+    /* ★ 左上のセル（社員名ヘッダー）は一番上に来るようにz-indexを上げる */
+    #weeklyTable thead th.sticky-col {
+      z-index: 4;
+      background: #f0f0f0;
     }
 
     /* 設定の社員リスト */
@@ -163,27 +186,6 @@
     #employeeList li {
       padding: 2px 0;
     }
-
-    /* スマホ向けに少し縮める */
-    @media (max-width: 600px) {
-      body {
-        font-size: 16px;
-        padding: 10px 10px;
-      }
-      h1 {
-        font-size: 22px;
-      }
-      table {
-        font-size: 16px;
-      }
-      .emp-name {
-        font-size: 16px;
-      }
-      button {
-        font-size: 14px;
-        padding: 6px 10px;
-      }
-    }
   </style>
 </head>
 <body>
@@ -191,14 +193,14 @@
   <div class="card">
     <h1>社内お弁当管理</h1>
     <p style="font-size: 14px; margin:0;">
-      1食 440円（※金額計算は月次一覧で確認）／ データはこのPCや端末のブラウザに自動保存されます。
+      1食 440円（※金額計算は月次一覧で確認）／ データはこのPCのブラウザに自動保存されます。
     </p>
   </div>
 
   <div class="card">
     <div class="tabs">
       <button class="tab-btn active" id="tab-daily">① 日次入力</button>
-      <button class="tab-btn" id="tab-weekly">② 週次入力</button>
+      <button class="tab-btn" id="tab-weekly">② 週次入力（1週間）</button>
       <button class="tab-btn" id="tab-summary">③ 月次集計</button>
       <button class="tab-btn" id="tab-settings">④ 設定</button>
     </div>
@@ -217,7 +219,7 @@
           </div>
         </div>
 
-        <!-- 社員リスト -->
+        <!-- 社員リスト（追加UIは別タブに移動） -->
         <div class="daily-block">
           <div id="orderTableWrapper">
             <table id="orderTable">
@@ -346,14 +348,7 @@
     ];
 
     const STORAGE_KEY = "bentoAppData_v2";
-
-    // 画面幅に応じて列数を変える
-    function getDailyCols() {
-      const w = window.innerWidth || document.documentElement.clientWidth;
-      if (w <= 480) return 2;     // スマホ：2列
-      if (w <= 768) return 3;     // 小さめタブレット：3列
-      return 4;                   // それ以外：4列
-    }
+    const NUM_DAILY_COLS = 4; // ★ 名前を4列で表示
 
     // ------- データ保存まわり -------
 
@@ -556,7 +551,7 @@
       }
     });
 
-    // ------- 日次テーブル描画（画面幅に応じて2〜4列） -------
+    // ------- 日次テーブル描画（名前4列） -------
 
     function updateNameStyle(span, checked) {
       if (checked) {
@@ -572,8 +567,7 @@
 
       orderTableBody.innerHTML = "";
 
-      const numCols = getDailyCols();
-      orderHeaderCell.colSpan = numCols;
+      const numCols = NUM_DAILY_COLS;
 
       for (let i = 0; i < data.employees.length; i += numCols) {
         const tr = document.createElement("tr");
@@ -623,11 +617,6 @@
       dailySummary.textContent = `${count}食`;
     }
 
-    // 画面サイズが変わったら、列数を再計算して再描画
-    window.addEventListener("resize", () => {
-      renderDailyTable();
-    });
-
     // ------- 日付操作（日次） -------
 
     function setCurrentDateKeyFromInput() {
@@ -663,7 +652,7 @@
       renderDailyTable();
     });
 
-    // ------- 週次テーブル描画（1週間分） -------
+    // ------- 週次テーブル描画（1週間分＋見出し固定） -------
 
     function getWeekDatesFromStartKey(startKey) {
       const start = keyToDate(startKey);
@@ -693,6 +682,7 @@
       weeklyHeadRow.innerHTML = "";
       const thName = document.createElement("th");
       thName.textContent = "社員名";
+      thName.classList.add("sticky-col"); // ★ 左固定
       weeklyHeadRow.appendChild(thName);
 
       weekDates.forEach(info => {
@@ -713,6 +703,7 @@
         const tr = document.createElement("tr");
         const tdName = document.createElement("td");
         tdName.textContent = name;
+        tdName.classList.add("sticky-col"); // ★ 左固定
         tr.appendChild(tdName);
 
         weekDates.forEach(info => {
@@ -859,6 +850,8 @@
 
       const monthStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}`;
       monthPicker.value = monthStr;
+
+      orderHeaderCell.colSpan = NUM_DAILY_COLS;
 
       renderDailyTable();
       renderWeeklyTable();
