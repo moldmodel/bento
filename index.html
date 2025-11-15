@@ -130,16 +130,17 @@
       margin-bottom: 16px;
     }
 
+    /* 日次：社員リスト部分（画面高さに応じてスクロール） */
     #orderTableWrapper {
-      max-height: 420px;
+      max-height: 60vh;
       overflow-y: auto;
       border-radius: 6px;
       border: 1px solid #ddd;
     }
 
-    /* ★ 週次：スクロール用の枠（ここでoverflowを管理） */
+    /* 週次：スクロール用の枠（ここでoverflowを管理） */
     #weeklyTableWrapper {
-      max-height: 430px;
+      max-height: 60vh;
       overflow: auto;
       border-radius: 6px;
       border: 1px solid #ddd;
@@ -154,14 +155,14 @@
       color: #1565c0; /* 青 */
     }
 
-    /* ★ 週次：ヘッダー行（日付）を上部に固定 */
+    /* 週次：ヘッダー行（日付）を上部に固定 */
     #weeklyTable thead th {
       position: sticky;
       top: 0;
       z-index: 2;
     }
 
-    /* ★ 週次：社員名の列を左に固定 */
+    /* 週次：社員名の列を左に固定 */
     #weeklyTable th.sticky-col,
     #weeklyTable td.sticky-col {
       position: sticky;
@@ -170,7 +171,7 @@
       background: #fff;  /* スクロール時に下のセルと重ならないように */
     }
 
-    /* ★ 左上のセル（社員名ヘッダー）は一番上に来るようにz-indexを上げる */
+    /* 左上のセル（社員名ヘッダー）は一番上に来るようにz-indexを上げる */
     #weeklyTable thead th.sticky-col {
       z-index: 4;
       background: #f0f0f0;
@@ -185,6 +186,42 @@
     }
     #employeeList li {
       padding: 2px 0;
+    }
+
+    /* ---------- スマホ向け調整 ---------- */
+    @media (max-width: 600px) {
+      body {
+        font-size: 16px;
+        padding: 10px 10px;
+      }
+      h1 {
+        font-size: 22px;
+      }
+      .tabs {
+        flex-wrap: wrap; /* タブがきついときは折り返し */
+      }
+      .tab-btn {
+        font-size: 14px;
+        padding: 8px;
+      }
+      table {
+        font-size: 16px;
+      }
+      .emp-name {
+        font-size: 16px;
+      }
+      button {
+        font-size: 14px;
+        padding: 6px 10px;
+      }
+      button.small {
+        font-size: 12px;
+        padding: 4px 8px;
+      }
+      #orderTableWrapper,
+      #weeklyTableWrapper {
+        max-height: 55vh; /* 少し低めにして操作スペース確保 */
+      }
     }
   </style>
 </head>
@@ -349,7 +386,7 @@
     ];
 
     const STORAGE_KEY = "bentoAppData_v2";
-    const NUM_DAILY_COLS = 4; // ★ 名前を4列で表示
+    const NUM_DAILY_COLS = 4; // 名前を4列で表示
 
     // ------- データ保存まわり -------
 
@@ -683,7 +720,7 @@
       weeklyHeadRow.innerHTML = "";
       const thName = document.createElement("th");
       thName.textContent = "社員名";
-      thName.classList.add("sticky-col"); // ★ 左固定
+      thName.classList.add("sticky-col"); // 左固定
       weeklyHeadRow.appendChild(thName);
 
       weekDates.forEach(info => {
@@ -704,7 +741,7 @@
         const tr = document.createElement("tr");
         const tdName = document.createElement("td");
         tdName.textContent = name;
-        tdName.classList.add("sticky-col"); // ★ 左固定
+        tdName.classList.add("sticky-col"); // 左固定
         tr.appendChild(tdName);
 
         weekDates.forEach(info => {
@@ -864,5 +901,3 @@
   </script>
 </body>
 </html>
-
-
