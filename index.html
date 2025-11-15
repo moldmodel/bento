@@ -155,11 +155,13 @@
       color: #1565c0; /* 青 */
     }
 
-    /* 週次：ヘッダー行（日付）を上部に固定 */
+    /* 週次：ヘッダー行（日付）を上部に固定＋折り返しOK */
     #weeklyTable thead th {
       position: sticky;
       top: 0;
       z-index: 2;
+      white-space: normal;
+      line-height: 1.2;
     }
 
     /* 週次：社員名の列を左に固定 */
@@ -221,6 +223,11 @@
       #orderTableWrapper,
       #weeklyTableWrapper {
         max-height: 55vh; /* 少し低めにして操作スペース確保 */
+      }
+      /* 週次ヘッダーはスマホでは小さめに */
+      #weeklyTable thead th {
+        font-size: 12px;
+        padding: 3px 2px;
       }
     }
   </style>
@@ -371,13 +378,13 @@
       "萩原",
       "茂木",
       "ロイ",
-      "宮下（健）",
+      "宮下健",
       "川村",
       "小林",
       "小野",
       "蠣崎",
       "志村",
-      "宮下（悠）",
+      "宮下悠",
       "平尾",
       "金森",
       "白鳥",
@@ -440,9 +447,12 @@
       return d;
     }
 
+    // 日付ラベル：2行表示（上：月/日、下：(曜)）
     function formatWeekLabel(d) {
       const wk = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
-      return `${d.getMonth() + 1}/${d.getDate()}(${wk})`;
+      const month = d.getMonth() + 1;
+      const date = d.getDate();
+      return `${month}/${date}<br>(${wk})`;
     }
 
     let currentDateKey = dateToKey(new Date());
@@ -725,7 +735,7 @@
 
       weekDates.forEach(info => {
         const th = document.createElement("th");
-        th.textContent = info.label;
+        th.innerHTML = info.label;  // 2行表示用（<br>を反映）
         if (info.dow === 0) {
           th.classList.add("day-sun"); // 日曜=赤
         } else if (info.dow === 6) {
