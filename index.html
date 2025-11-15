@@ -290,4 +290,583 @@
       </table>
 
       <div class="summary" id="monthlyTotalSummary">
-        合
+        合計：0食
+      </div>
+    </div>
+
+    <!-- 設定ビュー（社員の追加など） -->
+    <div id="view-settings" style="display:none;">
+      <div class="section-title">社員の設定</div>
+      <div class="row">
+        <label for="employeeNameInput">社員の追加：</label>
+        <input type="text" id="employeeNameInput" placeholder="例）佐藤 賢" />
+        <button id="addEmployeeBtn" class="small">追加</button>
+        <span class="badge">※名簿にない人だけ</span>
+      </div>
+      <div class="section-title" style="margin-top:12px;">現在の社員</div>
+      <ul id="employeeList"></ul>
+    </div>
+
+  </div>
+
+  <script>
+    // ------- 定数：デフォルト社員名簿 -------
+    const DEFAULT_EMPLOYEES = [
+      "田邉",
+      "駒井",
+      "高山",
+      "齋藤",
+      "阿久津",
+      "秦",
+      "増田",
+      "小松",
+      "山本",
+      "望月",
+      "堀内",
+      "日原",
+      "三枝",
+      "平井",
+      "可知",
+      "水越",
+      "井出",
+      "萩原",
+      "茂木",
+      "ロイ",
+      "宮下",
+      "川村",
+      "小林",
+      "小野",
+      "蠣崎",
+      "志村",
+      "平尾",
+      "金森",
+      "白鳥",
+      "植松",
+      "安藤"
+    ];
+
+    const STORAGE_KEY = "bentoAppData_v2";
+
+    // 画面幅に応じて列数を変える
+    function getDailyCols() {
+      const w = window.innerWidth || document.documentElement.clientWidth;
+      if (w <= 480) return 2;     // スマホ：2列
+      if (w <= 768) return 3;     // 小さめタブレット：3列
+      return 4;                   // それ以外：4列
+    }
+
+    // ------- データ保存まわり -------
+
+    function loadData() {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) {
+        return { employees: [...DEFAULT_EMPLOYEES], orders: {} };
+      }
+      try {
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed.employees) || parsed.employees.length === 0) {
+          parsed.employees = [...DEFAULT_EMPLOYEES];
+        }
+        if (!parsed.orders) parsed.orders = {};
+        return parsed;
+      } catch (e) {
+        console.error("データの読み込みに失敗しました", e);
+        return { employees: [...DEFAULT_EMPLOYEES], orders: {} };
+      }
+    }
+
+    function saveData() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    }
+
+    let data = loadData();
+
+    // ------- 日付関係 -------
+
+    function pad2(n) {
+      return n.toString().padStart(2, "0");
+    }
+
+    function dateToKey(d) {
+      const y = d.getFullYear();
+      const m = pad2(d.getMonth() + 1);
+      const day = pad2(d.getDate());
+      return `${y}-${m}-${day}`;
+    }
+
+    function keyToDate(key) {
+      const [y, m, d] = key.split("-").map(Number);
+      return new Date(y, m - 1, d);
+    }
+
+    function getWeekStartMonday(date) {
+      const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+      const day = d.getDay(); // 0:日〜6:土
+      const diff = (day + 6) % 7; // 月曜=0
+      d.setDate(d.getDate() - diff);
+      return d;
+    }
+
+    function formatWeekLabel(d) {
+      const wk = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
+      return `${d.getMonth() + 1}/${d.getDate()}(${wk})`;
+    }
+
+    let currentDateKey = dateToKey(new Date());
+    let currentWeekStartKey = currentDateKey;
+
+    // ------- DOM要素取得 -------
+
+    const tabDailyBtn = document.getElementById("tab-daily");
+    const tabWeeklyBtn = document.getElementById("tab-weekly");
+    const tabSummaryBtn = document.getElementById("tab-summary");
+    const tabSettingsBtn = document.getElementById("tab-settings");
+
+    const viewDaily = document.getElementById("view-daily");
+    const viewWeekly = document.getElementById("view-weekly");
+    const viewSummary = document.getElementById("view-summary");
+    const viewSettings = document.getElementById("view-settings");
+
+    const datePicker = document.getElementById("datePicker");
+    const prevDayBtn = document.getElementById("prevDayBtn");
+    const todayBtn = document.getElementById("todayBtn");
+    const nextDayBtn = document.getElementById("nextDayBtn");
+
+    const employeeNameInput = document.getElementById("employeeNameInput");
+    const addEmployeeBtn = document.getElementById("addEmployeeBtn");
+    const employeeList = document.getElementById("employeeList");
+
+    const orderTableBody = document.querySelector("#orderTable tbody");
+    const orderHeaderCell = document.getElementById("orderHeaderCell");
+    const dailySummary = document.getElementById("dailySummary");
+
+    const monthPicker = document.getElementById("monthPicker");
+    const refreshSummaryBtn = document.getElementById("refreshSummaryBtn");
+    const exportCsvBtn = document.getElementById("exportCsvBtn");
+    const summaryTableBody = document.querySelector("#summaryTable tbody");
+    const monthlyTotalSummary = document.getElementById("monthlyTotalSummary");
+
+    const weekStartPicker = document.getElementById("weekStartPicker");
+    const thisWeekBtn = document.getElementById("thisWeekBtn");
+    const weeklyHeadRow = document.getElementById("weeklyHeadRow");
+    const weeklyTableBody = document.querySelector("#weeklyTable tbody");
+
+    // ------- タブ切り替え -------
+
+    function showDailyView() {
+      tabDailyBtn.classList.add("active");
+      tabWeeklyBtn.classList.remove("active");
+      tabSummaryBtn.classList.remove("active");
+      tabSettingsBtn.classList.remove("active");
+      viewDaily.style.display = "";
+      viewWeekly.style.display = "none";
+      viewSummary.style.display = "none";
+      viewSettings.style.display = "none";
+    }
+
+    function showWeeklyView() {
+      tabDailyBtn.classList.remove("active");
+      tabWeeklyBtn.classList.add("active");
+      tabSummaryBtn.classList.remove("active");
+      tabSettingsBtn.classList.remove("active");
+      viewDaily.style.display = "none";
+      viewWeekly.style.display = "";
+      viewSummary.style.display = "none";
+      viewSettings.style.display = "none";
+      renderWeeklyTable();
+    }
+
+    function showSummaryView() {
+      tabDailyBtn.classList.remove("active");
+      tabWeeklyBtn.classList.remove("active");
+      tabSummaryBtn.classList.add("active");
+      tabSettingsBtn.classList.remove("active");
+      viewDaily.style.display = "none";
+      viewWeekly.style.display = "none";
+      viewSummary.style.display = "";
+      viewSettings.style.display = "none";
+      renderMonthlySummary();
+    }
+
+    function showSettingsView() {
+      tabDailyBtn.classList.remove("active");
+      tabWeeklyBtn.classList.remove("active");
+      tabSummaryBtn.classList.remove("active");
+      tabSettingsBtn.classList.add("active");
+      viewDaily.style.display = "none";
+      viewWeekly.style.display = "none";
+      viewSummary.style.display = "none";
+      viewSettings.style.display = "";
+      renderEmployeeList();
+    }
+
+    tabDailyBtn.addEventListener("click", showDailyView);
+    tabWeeklyBtn.addEventListener("click", showWeeklyView);
+    tabSummaryBtn.addEventListener("click", showSummaryView);
+    tabSettingsBtn.addEventListener("click", showSettingsView);
+
+    // ------- 注文データヘルパー -------
+
+    function ensureOrdersForDate(dateKey) {
+      if (!data.orders[dateKey]) {
+        data.orders[dateKey] = {};
+      }
+    }
+
+    function ensureOrdersForCurrentDate() {
+      ensureOrdersForDate(currentDateKey);
+    }
+
+    // ------- 社員リスト（設定画面用） -------
+
+    function renderEmployeeList() {
+      employeeList.innerHTML = "";
+      data.employees.forEach(name => {
+        const li = document.createElement("li");
+        li.textContent = name;
+        employeeList.appendChild(li);
+      });
+    }
+
+    function addEmployee(name) {
+      const trimmed = name.trim();
+      if (!trimmed) return;
+      if (data.employees.includes(trimmed)) {
+        alert("同じ名前の社員がすでに登録されています。");
+        return;
+      }
+      data.employees.push(trimmed);
+      saveData();
+      renderDailyTable();
+      renderWeeklyTable();
+      renderMonthlySummary();
+      renderEmployeeList();
+    }
+
+    addEmployeeBtn.addEventListener("click", () => {
+      addEmployee(employeeNameInput.value);
+      employeeNameInput.value = "";
+      employeeNameInput.focus();
+    });
+
+    employeeNameInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        addEmployee(employeeNameInput.value);
+        employeeNameInput.value = "";
+      }
+    });
+
+    // ------- 日次テーブル描画（画面幅に応じて2〜4列） -------
+
+    function updateNameStyle(span, checked) {
+      if (checked) {
+        span.classList.add("checked");
+      } else {
+        span.classList.remove("checked");
+      }
+    }
+
+    function renderDailyTable() {
+      ensureOrdersForCurrentDate();
+      const orders = data.orders[currentDateKey];
+
+      orderTableBody.innerHTML = "";
+
+      const numCols = getDailyCols();
+      orderHeaderCell.colSpan = numCols;
+
+      for (let i = 0; i < data.employees.length; i += numCols) {
+        const tr = document.createElement("tr");
+
+        for (let c = 0; c < numCols; c++) {
+          const td = document.createElement("td");
+          const idx = i + c;
+          if (idx < data.employees.length) {
+            const name = data.employees[idx];
+
+            const checkbox = document.createElement("input");
+            checkbox.type = "checkbox";
+            checkbox.style.transform = "scale(1.3)";
+            checkbox.checked = !!orders[name];
+
+            const spanName = document.createElement("span");
+            spanName.textContent = name;
+            spanName.className = "emp-name";
+            updateNameStyle(spanName, checkbox.checked);
+
+            checkbox.addEventListener("change", () => {
+              orders[name] = checkbox.checked;
+              updateNameStyle(spanName, checkbox.checked);
+              saveData();
+              updateDailySummary();
+            });
+
+            td.appendChild(checkbox);
+            td.appendChild(spanName);
+          }
+          tr.appendChild(td);
+        }
+
+        orderTableBody.appendChild(tr);
+      }
+
+      updateDailySummary();
+    }
+
+    function updateDailySummary() {
+      ensureOrdersForCurrentDate();
+      const orders = data.orders[currentDateKey];
+      let count = 0;
+      for (const name of data.employees) {
+        if (orders[name]) count++;
+      }
+      dailySummary.textContent = `${count}食`;
+    }
+
+    // 画面サイズが変わったら、列数を再計算して再描画
+    window.addEventListener("resize", () => {
+      renderDailyTable();
+    });
+
+    // ------- 日付操作（日次） -------
+
+    function setCurrentDateKeyFromInput() {
+      const val = datePicker.value;
+      if (!val) return;
+      currentDateKey = val;
+      ensureOrdersForCurrentDate();
+      renderDailyTable();
+    }
+
+    datePicker.addEventListener("change", setCurrentDateKeyFromInput);
+
+    prevDayBtn.addEventListener("click", () => {
+      const d = keyToDate(currentDateKey);
+      d.setDate(d.getDate() - 1);
+      currentDateKey = dateToKey(d);
+      datePicker.value = currentDateKey;
+      renderDailyTable();
+    });
+
+    todayBtn.addEventListener("click", () => {
+      const today = new Date();
+      currentDateKey = dateToKey(today);
+      datePicker.value = currentDateKey;
+      renderDailyTable();
+    });
+
+    nextDayBtn.addEventListener("click", () => {
+      const d = keyToDate(currentDateKey);
+      d.setDate(d.getDate() + 1);
+      currentDateKey = dateToKey(d);
+      datePicker.value = currentDateKey;
+      renderDailyTable();
+    });
+
+    // ------- 週次テーブル描画（1週間分） -------
+
+    function getWeekDatesFromStartKey(startKey) {
+      const start = keyToDate(startKey);
+      const list = [];
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+        list.push({
+          key: dateToKey(d),
+          label: formatWeekLabel(d),
+          dow: d.getDay()
+        });
+      }
+      return list;
+    }
+
+    function updateDailySummaryIfAffected(changedDateKey) {
+      if (changedDateKey === currentDateKey) {
+        updateDailySummary();
+      }
+    }
+
+    function renderWeeklyTable() {
+      if (!currentWeekStartKey) return;
+      const weekDates = getWeekDatesFromStartKey(currentWeekStartKey);
+
+      // ヘッダー
+      weeklyHeadRow.innerHTML = "";
+      const thName = document.createElement("th");
+      thName.textContent = "社員名";
+      weeklyHeadRow.appendChild(thName);
+
+      weekDates.forEach(info => {
+        const th = document.createElement("th");
+        th.textContent = info.label;
+        if (info.dow === 0) {
+          th.classList.add("day-sun"); // 日曜=赤
+        } else if (info.dow === 6) {
+          th.classList.add("day-sat"); // 土曜=青
+        }
+        weeklyHeadRow.appendChild(th);
+      });
+
+      // 本体
+      weeklyTableBody.innerHTML = "";
+
+      data.employees.forEach(name => {
+        const tr = document.createElement("tr");
+        const tdName = document.createElement("td");
+        tdName.textContent = name;
+        tr.appendChild(tdName);
+
+        weekDates.forEach(info => {
+          ensureOrdersForDate(info.key);
+          const orders = data.orders[info.key];
+
+          const td = document.createElement("td");
+          td.style.textAlign = "center";
+
+          if (info.dow === 0) {
+            td.classList.add("day-sun");
+          } else if (info.dow === 6) {
+            td.classList.add("day-sat");
+          }
+
+          const checkbox = document.createElement("input");
+          checkbox.type = "checkbox";
+          checkbox.style.transform = "scale(1.2)";
+          checkbox.checked = !!orders[name];
+
+          checkbox.addEventListener("change", () => {
+            orders[name] = checkbox.checked;
+            saveData();
+            updateDailySummaryIfAffected(info.key);
+          });
+
+          td.appendChild(checkbox);
+          tr.appendChild(td);
+        });
+
+        weeklyTableBody.appendChild(tr);
+      });
+    }
+
+    weekStartPicker.addEventListener("change", () => {
+      if (!weekStartPicker.value) return;
+      currentWeekStartKey = weekStartPicker.value;
+      renderWeeklyTable();
+    });
+
+    thisWeekBtn.addEventListener("click", () => {
+      const monday = getWeekStartMonday(new Date());
+      currentWeekStartKey = dateToKey(monday);
+      weekStartPicker.value = currentWeekStartKey;
+      renderWeeklyTable();
+    });
+
+    // ------- 月次集計 -------
+
+    function renderMonthlySummary() {
+      const val = monthPicker.value;
+      if (!val) return;
+      const monthStr = val; // "YYYY-MM"
+
+      const counts = {};
+      data.employees.forEach(name => counts[name] = 0);
+
+      for (const [dateKey, orders] of Object.entries(data.orders)) {
+        if (!dateKey.startsWith(monthStr)) continue;
+        data.employees.forEach(name => {
+          if (orders[name]) {
+            counts[name] = (counts[name] || 0) + 1;
+          }
+        });
+      }
+
+      summaryTableBody.innerHTML = "";
+      let totalMeals = 0;
+      let totalAmount = 0;
+
+      data.employees.forEach(name => {
+        const meals = counts[name] || 0;
+        const amount = meals * 440;
+        totalMeals += meals;
+        totalAmount += amount;
+
+        const tr = document.createElement("tr");
+        const tdName = document.createElement("td");
+        tdName.textContent = name;
+        const tdMeals = document.createElement("td");
+        tdMeals.textContent = meals;
+        const tdAmount = document.createElement("td");
+        tdAmount.textContent = amount.toLocaleString() + "円";
+
+        tr.appendChild(tdName);
+        tr.appendChild(tdMeals);
+        tr.appendChild(tdAmount);
+        summaryTableBody.appendChild(tr);
+      });
+
+      monthlyTotalSummary.textContent = `合計：${totalMeals}食`;
+    }
+
+    refreshSummaryBtn.addEventListener("click", renderMonthlySummary);
+
+    // ------- CSVエクスポート（選択月の明細） -------
+
+    function exportMonthlyCsv() {
+      const monthStr = monthPicker.value;
+      if (!monthStr) {
+        alert("先に対象月を選択してください。");
+        return;
+      }
+
+      const rows = [];
+      rows.push("日付,社員名,食数");
+
+      const dateKeys = Object.keys(data.orders)
+        .filter(k => k.startsWith(monthStr))
+        .sort();
+
+      dateKeys.forEach(dateKey => {
+        const orders = data.orders[dateKey] || {};
+        data.employees.forEach(name => {
+          const val = orders[name] ? 1 : 0;
+          rows.push(`${dateKey},${name},${val}`);
+        });
+      });
+
+      const csvContent = rows.join("\r\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `bento_${monthStr}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
+    exportCsvBtn.addEventListener("click", exportMonthlyCsv);
+
+    // ------- 初期化 -------
+
+    function init() {
+      const today = new Date();
+      currentDateKey = dateToKey(today);
+      datePicker.value = currentDateKey;
+
+      const monday = getWeekStartMonday(today);
+      currentWeekStartKey = dateToKey(monday);
+      weekStartPicker.value = currentWeekStartKey;
+
+      const monthStr = `${today.getFullYear()}-${pad2(today.getMonth() + 1)}`;
+      monthPicker.value = monthStr;
+
+      renderDailyTable();
+      renderWeeklyTable();
+      renderMonthlySummary();
+      renderEmployeeList();
+    }
+
+    init();
+  </script>
+</body>
+</html>
