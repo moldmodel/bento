@@ -172,7 +172,7 @@
       position: sticky;
       left: 0;
       z-index: 3;
-      background: #fff;  /* スクロール時に下のセルと重ならないように */
+      background: #fff;
     }
 
     /* 左上のセル（社員名ヘッダー）は一番上に来るようにz-indexを上げる */
@@ -279,7 +279,7 @@
       <button class="tab-btn" id="tab-settings">④ 設定</button>
     </div>
 
-    <!-- 日次入力ビュー（縦並び） -->
+    <!-- 日次入力ビュー -->
     <div id="view-daily">
       <div class="layout-daily">
         <!-- 日付 -->
@@ -427,42 +427,22 @@
       "白鳥",
       "植松",
       "安藤",
-      "水越"  // 一番下
+      "水越"
     ];
 
-    const STORAGE_KEY = "bentoAppData_v2";
-    const NUM_DAILY_COLS = 3; // ★ 名前を3列で表示
+    const STORAGE_KEY = "bentoAppData_v3";
+    const NUM_DAILY_COLS = 3; // 3列表示
+    const API_BASE = "https://script.google.com/macros/s/AKfycbySv-0LtK9VtnrJwgzQ9QuvRObz2udE_EqwBA0KQgBdZClZ3DW6YHjMQTw2Yk_BOD0/exec";
 
-    // ------- データ読み込み（古い「堀内」を「堀内俊」にマイグレーション） -------
+    // ------- ローカル保存（社員名のみ） -------
     function loadData() {
       const raw = localStorage.getItem(STORAGE_KEY);
-
       let employees = [...DEFAULT_EMPLOYEES];
       let orders = {};
 
       if (raw) {
         try {
           const parsed = JSON.parse(raw);
-
-          // 旧データの社員名「堀内」を「堀内俊」に変換
-          if (Array.isArray(parsed.employees)) {
-            parsed.employees = parsed.employees.map(n =>
-              n === "堀内" ? "堀内俊" : n
-            );
-          }
-
-          // 旧データの注文キー「堀内」を「堀内俊」に変換
-          if (parsed.orders && typeof parsed.orders === "object") {
-            for (const [dateKey, dayOrders] of Object.entries(parsed.orders)) {
-              if (dayOrders && typeof dayOrders === "object" && "堀内" in dayOrders) {
-                dayOrders["堀内俊"] = dayOrders["堀内"];
-                delete dayOrders["堀内"];
-              }
-            }
-            orders = parsed.orders;
-          }
-
-          // 名簿：デフォルト＋追加分（デフォルトにない名前）
           if (Array.isArray(parsed.employees) && parsed.employees.length > 0) {
             const defaultSet = new Set(DEFAULT_EMPLOYEES);
             const custom = parsed.employees.filter(name => !defaultSet.has(name));
@@ -470,19 +450,58 @@
             employees = [...DEFAULT_EMPLOYEES, ...uniqueCustom];
           }
         } catch (e) {
-          console.error("データの読み込みに失敗しました", e);
+          console.error("ローカルデータ読み込みエラー", e);
         }
       }
-
       return { employees, orders };
     }
 
     function saveData() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ employees: data.employees }));
     }
 
     let data = loadData();
 
+    // ------- Googleスプレッドシートとの連携 -------
+    async function fetchAllOrdersFromServer() {
+      if (!API_BASE) return;
+      try {
+        const res = await fetch(API_BASE);
+        if (!res.ok) {
+          console.error("サーバーからの取得に失敗しました:", res.status);
+          return;
+        }
+        const rows = await res.json();
+        const orders = {};
+        rows.forEach(row => {
+          const dateKey = String(row.date);
+          const employee = String(row.employee);
+          const value = row.value;
+          if (!orders[dateKey]) orders[dateKey] = {};
+          orders[dateKey][employee] = value === 1 || value === "1" || value === true;
+        });
+        data.orders = orders;
+      } catch (e) {
+        console.error("サーバーからの読み込みエラー", e);
+      }
+    }
+
+    function saveOrderToServer(dateKey, employeeName, checked) {
+      if (!API_BASE) return;
+      fetch(API_BASE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: dateKey,
+          employee: employeeName,
+          value: checked ? 1 : 0
+        })
+      }).catch(err => {
+        console.error("サーバー保存エラー", err);
+      });
+    }
+
+    // ------- 日付関係 -------
     function pad2(n) {
       return n.toString().padStart(2, "0");
     }
@@ -517,6 +536,7 @@
     let currentDateKey = dateToKey(new Date());
     let currentWeekStartKey = currentDateKey;
 
+    // ------- DOM要素取得 -------
     const tabDailyBtn = document.getElementById("tab-daily");
     const tabWeeklyBtn = document.getElementById("tab-weekly");
     const tabSummaryBtn = document.getElementById("tab-summary");
@@ -551,6 +571,7 @@
     const weeklyHeadRow = document.getElementById("weeklyHeadRow");
     const weeklyTableBody = document.querySelector("#weeklyTable tbody");
 
+    // ------- タブ切り替え -------
     function showDailyView() {
       tabDailyBtn.classList.add("active");
       tabWeeklyBtn.classList.remove("active");
@@ -603,6 +624,7 @@
     tabSummaryBtn.addEventListener("click", showSummaryView);
     tabSettingsBtn.addEventListener("click", showSettingsView);
 
+    // ------- 注文データヘルパー -------
     function ensureOrdersForDate(dateKey) {
       if (!data.orders[dateKey]) {
         data.orders[dateKey] = {};
@@ -613,6 +635,7 @@
       ensureOrdersForDate(currentDateKey);
     }
 
+    // ------- 社員リスト（設定画面用） -------
     function renderEmployeeList() {
       employeeList.innerHTML = "";
       data.employees.forEach(name => {
@@ -650,6 +673,7 @@
       }
     });
 
+    // ------- 日次テーブル描画（3列） -------
     function updateNameStyle(span, checked) {
       if (checked) {
         span.classList.add("checked");
@@ -660,7 +684,7 @@
 
     function renderDailyTable() {
       ensureOrdersForCurrentDate();
-      const orders = data.orders[currentDateKey];
+      const orders = data.orders[currentDateKey] || {};
 
       orderTableBody.innerHTML = "";
       const numCols = NUM_DAILY_COLS;
@@ -685,9 +709,10 @@
             updateNameStyle(spanName, checkbox.checked);
 
             checkbox.addEventListener("change", () => {
-              orders[name] = checkbox.checked;
+              ensureOrdersForCurrentDate();
+              data.orders[currentDateKey][name] = checkbox.checked;
               updateNameStyle(spanName, checkbox.checked);
-              saveData();
+              saveOrderToServer(currentDateKey, name, checkbox.checked);
               updateDailySummary();
             });
 
@@ -713,6 +738,7 @@
       dailySummary.textContent = `${count}食`;
     }
 
+    // ------- 日付操作（日次） -------
     function setCurrentDateKeyFromInput() {
       const val = datePicker.value;
       if (!val) return;
@@ -746,6 +772,7 @@
       renderDailyTable();
     });
 
+    // ------- 週次テーブル描画（1週間分＋見出し固定） -------
     function getWeekDatesFromStartKey(startKey) {
       const start = keyToDate(startKey);
       const list = [];
@@ -815,8 +842,9 @@
           checkbox.checked = !!orders[name];
 
           checkbox.addEventListener("change", () => {
-            orders[name] = checkbox.checked;
-            saveData();
+            ensureOrdersForDate(info.key);
+            data.orders[info.key][name] = checkbox.checked;
+            saveOrderToServer(info.key, name, checkbox.checked);
             updateDailySummaryIfAffected(info.key);
           });
 
@@ -841,6 +869,7 @@
       renderWeeklyTable();
     });
 
+    // ------- 月次集計 -------
     function renderMonthlySummary() {
       const val = monthPicker.value;
       if (!val) return;
@@ -887,6 +916,7 @@
 
     refreshSummaryBtn.addEventListener("click", renderMonthlySummary);
 
+    // ------- CSVエクスポート（選択月の明細） -------
     function exportMonthlyCsv() {
       const monthStr = monthPicker.value;
       if (!monthStr) {
@@ -923,7 +953,8 @@
 
     exportCsvBtn.addEventListener("click", exportMonthlyCsv);
 
-    function init() {
+    // ------- 初期化 -------
+    async function init() {
       const today = new Date();
       currentDateKey = dateToKey(today);
       datePicker.value = currentDateKey;
@@ -937,10 +968,14 @@
 
       orderHeaderCell.colSpan = NUM_DAILY_COLS;
 
+      renderEmployeeList();
+
+      // サーバーから過去データを取得してから描画
+      await fetchAllOrdersFromServer();
+
       renderDailyTable();
       renderWeeklyTable();
       renderMonthlySummary();
-      renderEmployeeList();
     }
 
     init();
