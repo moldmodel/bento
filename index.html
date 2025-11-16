@@ -271,15 +271,14 @@
 
   <div class="card">
     <h1>社内お弁当管理</h1>
-    <p style="font-size: 14px; margin:0;">
-      1食 440円（※金額計算は月次一覧で確認）／ データはこのPCのブラウザに自動保存されます。
-    </p>
+    <!-- 説明の1行は削除 -->
   </div>
 
   <div class="card">
     <div class="tabs">
       <button class="tab-btn active" id="tab-daily">① 日次入力</button>
-      <button class="tab-btn" id="tab-weekly">② 週次入力（1週間）</button>
+      <!-- （1週間）を削除 -->
+      <button class="tab-btn" id="tab-weekly">② 週次入力</button>
       <button class="tab-btn" id="tab-summary">③ 月次集計</button>
       <button class="tab-btn" id="tab-settings">④ 設定</button>
     </div>
@@ -291,7 +290,6 @@
         <div class="daily-block">
           <div class="row row-date">
             <div class="date-input-wrap">
-              <!-- ラベル削除して datePicker のみ -->
               <input type="date" id="datePicker" />
             </div>
             <div class="day-nav">
@@ -397,6 +395,11 @@
   <script>
     // ------- 定数：デフォルト社員名簿 -------
     const DEFAULT_EMPLOYEES = [
+      "会長",
+      "社長",
+      "副社長",
+      "堀内美",
+      "小俣",
       "田邉",
       "駒井",
       "高山",
@@ -407,12 +410,11 @@
       "小松",
       "山本",
       "望月",
-      "堀内",
+      "堀内俊",
       "日原",
       "三枝",
       "平井",
       "可知",
-      "水越",
       "井出",
       "萩原",
       "茂木",
@@ -428,28 +430,38 @@
       "金森",
       "白鳥",
       "植松",
-      "安藤"
+      "安藤",
+      "水越"  // 一番下に
     ];
 
     const STORAGE_KEY = "bentoAppData_v2";
     const NUM_DAILY_COLS = 4; // 名前を4列で表示
 
+    // ------- データ読み込み（古いデータがあっても名簿順をアップデート） -------
     function loadData() {
       const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) {
-        return { employees: [...DEFAULT_EMPLOYEES], orders: {} };
-      }
-      try {
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed.employees) || parsed.employees.length === 0) {
-          parsed.employees = [...DEFAULT_EMPLOYEES];
+
+      let employees = [...DEFAULT_EMPLOYEES];
+      let orders = {};
+
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed.orders) orders = parsed.orders;
+
+          if (Array.isArray(parsed.employees) && parsed.employees.length > 0) {
+            const defaultSet = new Set(DEFAULT_EMPLOYEES);
+            // 既存データのうち、デフォルト以外＝ユーザーが追加した社員
+            const custom = parsed.employees.filter(name => !defaultSet.has(name));
+            const uniqueCustom = [...new Set(custom)];
+            employees = [...DEFAULT_EMPLOYEES, ...uniqueCustom];
+          }
+        } catch (e) {
+          console.error("データの読み込みに失敗しました", e);
         }
-        if (!parsed.orders) parsed.orders = {};
-        return parsed;
-      } catch (e) {
-        console.error("データの読み込みに失敗しました", e);
-        return { employees: [...DEFAULT_EMPLOYEES], orders: {} };
       }
+
+      return { employees, orders };
     }
 
     function saveData() {
