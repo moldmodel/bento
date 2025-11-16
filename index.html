@@ -92,14 +92,14 @@
     }
     th {
       border: 1px solid #ddd;
-      padding: 5px 6px;
+      padding: 8px 6px;           /* 行を少し広めに */
       text-align: center;
       vertical-align: middle;
       background: #f0f0f0;
     }
     td {
       border: 1px solid #ddd;
-      padding: 5px 6px;
+      padding: 8px 6px;           /* 行を少し広めに */
       text-align: left;
       vertical-align: middle;
       background: #fff;
@@ -134,10 +134,8 @@
       margin-bottom: 16px;
     }
 
-    /* 日次：社員リスト部分（画面高さに応じてスクロール） */
+    /* 日次：社員リスト部分（スクロールなし） */
     #orderTableWrapper {
-      max-height: 60vh;
-      overflow-y: auto;
       border-radius: 6px;
       border: 1px solid #ddd;
     }
@@ -242,9 +240,9 @@
         font-size: 12px;
         padding: 4px 8px;
       }
-      #orderTableWrapper,
+      /* 週次だけスクロール高さ制限 */
       #weeklyTableWrapper {
-        max-height: 55vh; /* 少し低めにして操作スペース確保 */
+        max-height: 55vh;
       }
       /* 週次ヘッダーはスマホでは小さめに */
       #weeklyTable thead th {
@@ -271,13 +269,11 @@
 
   <div class="card">
     <h1>社内お弁当管理</h1>
-    <!-- 説明の1行は削除 -->
   </div>
 
   <div class="card">
     <div class="tabs">
       <button class="tab-btn active" id="tab-daily">① 日次入力</button>
-      <!-- （1週間）を削除 -->
       <button class="tab-btn" id="tab-weekly">② 週次入力</button>
       <button class="tab-btn" id="tab-summary">③ 月次集計</button>
       <button class="tab-btn" id="tab-settings">④ 設定</button>
@@ -286,7 +282,7 @@
     <!-- 日次入力ビュー（縦並び） -->
     <div id="view-daily">
       <div class="layout-daily">
-        <!-- 日付（スマホではボタンが改行される） -->
+        <!-- 日付 -->
         <div class="daily-block">
           <div class="row row-date">
             <div class="date-input-wrap">
@@ -431,13 +427,13 @@
       "白鳥",
       "植松",
       "安藤",
-      "水越"  // 一番下に
+      "水越"  // 一番下
     ];
 
     const STORAGE_KEY = "bentoAppData_v2";
-    const NUM_DAILY_COLS = 4; // 名前を4列で表示
+    const NUM_DAILY_COLS = 3; // ★ 名前を3列で表示
 
-    // ------- データ読み込み（古いデータがあっても名簿順をアップデート） -------
+    // ------- データ読み込み（古い「堀内」を「堀内俊」にマイグレーション） -------
     function loadData() {
       const raw = localStorage.getItem(STORAGE_KEY);
 
@@ -447,11 +443,28 @@
       if (raw) {
         try {
           const parsed = JSON.parse(raw);
-          if (parsed.orders) orders = parsed.orders;
 
+          // 旧データの社員名「堀内」を「堀内俊」に変換
+          if (Array.isArray(parsed.employees)) {
+            parsed.employees = parsed.employees.map(n =>
+              n === "堀内" ? "堀内俊" : n
+            );
+          }
+
+          // 旧データの注文キー「堀内」を「堀内俊」に変換
+          if (parsed.orders && typeof parsed.orders === "object") {
+            for (const [dateKey, dayOrders] of Object.entries(parsed.orders)) {
+              if (dayOrders && typeof dayOrders === "object" && "堀内" in dayOrders) {
+                dayOrders["堀内俊"] = dayOrders["堀内"];
+                delete dayOrders["堀内"];
+              }
+            }
+            orders = parsed.orders;
+          }
+
+          // 名簿：デフォルト＋追加分（デフォルトにない名前）
           if (Array.isArray(parsed.employees) && parsed.employees.length > 0) {
             const defaultSet = new Set(DEFAULT_EMPLOYEES);
-            // 既存データのうち、デフォルト以外＝ユーザーが追加した社員
             const custom = parsed.employees.filter(name => !defaultSet.has(name));
             const uniqueCustom = [...new Set(custom)];
             employees = [...DEFAULT_EMPLOYEES, ...uniqueCustom];
