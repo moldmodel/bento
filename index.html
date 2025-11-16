@@ -432,9 +432,9 @@
 
     const STORAGE_KEY = "bentoAppData_v3";
     const NUM_DAILY_COLS = 3; // 3列表示
-    const API_BASE = "https://script.google.com/macros/s/AKfycbwLNWlvowda2D0YHDNWyB_tKcnHlWjOnjQWF6V1dve7JWpA6yxxt3hxyjAzh6ktYPu4/exec";
+    const API_BASE = "https://script.google.com/macros/s/AKfycbySv-0LtK9VtnrJwgzQ9QuvRObz2udE_EqwBA0KQgBdZClZ3DW6YHjMQTw2Yk_BOD0/exec";
 
-    // ------- ローカル保存（社員名のみ） -------
+    // ------- ローカル保存（社員名＋注文データ） -------
     function loadData() {
       const raw = localStorage.getItem(STORAGE_KEY);
       let employees = [...DEFAULT_EMPLOYEES];
@@ -444,20 +444,28 @@
         try {
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed.employees) && parsed.employees.length > 0) {
+            // 追加された社員だけマージ
             const defaultSet = new Set(DEFAULT_EMPLOYEES);
             const custom = parsed.employees.filter(name => !defaultSet.has(name));
             const uniqueCustom = [...new Set(custom)];
             employees = [...DEFAULT_EMPLOYEES, ...uniqueCustom];
           }
+          if (parsed.orders && typeof parsed.orders === "object") {
+            orders = parsed.orders;
+          }
         } catch (e) {
           console.error("ローカルデータ読み込みエラー", e);
         }
       }
+
       return { employees, orders };
     }
 
-    function saveData() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ employees: data.employees }));
+    function saveDataToLocal() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        employees: data.employees,
+        orders: data.orders
+      }));
     }
 
     let data = loadData();
@@ -472,15 +480,27 @@
           return;
         }
         const rows = await res.json();
-        const orders = {};
+        const serverOrders = {};
         rows.forEach(row => {
           const dateKey = String(row.date);
           const employee = String(row.employee);
           const value = row.value;
-          if (!orders[dateKey]) orders[dateKey] = {};
-          orders[dateKey][employee] = value === 1 || value === "1" || value === true;
+          if (!serverOrders[dateKey]) serverOrders[dateKey] = {};
+          serverOrders[dateKey][employee] =
+            value === 1 || value === "1" || value === true;
         });
-        data.orders = orders;
+
+        // ローカルのデータにサーバーのデータをマージ（サーバー側を優先）
+        const merged = data.orders || {};
+        Object.keys(serverOrders).forEach(dKey => {
+          if (!merged[dKey]) merged[dKey] = {};
+          const perDate = serverOrders[dKey];
+          Object.keys(perDate).forEach(emp => {
+            merged[dKey][emp] = perDate[emp];
+          });
+        });
+        data.orders = merged;
+        saveDataToLocal();
       } catch (e) {
         console.error("サーバーからの読み込みエラー", e);
       }
@@ -521,7 +541,7 @@
     function getWeekStartMonday(date) {
       const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
       const day = d.getDay();
-      const diff = (day + 6) % 7; // 月曜=0
+      const diff = (day + 6) % 7;
       d.setDate(d.getDate() - diff);
       return d;
     }
@@ -653,7 +673,7 @@
         return;
       }
       data.employees.push(trimmed);
-      saveData();
+      saveDataToLocal();
       renderDailyTable();
       renderWeeklyTable();
       renderMonthlySummary();
@@ -713,6 +733,7 @@
               data.orders[currentDateKey][name] = checkbox.checked;
               updateNameStyle(spanName, checkbox.checked);
               saveOrderToServer(currentDateKey, name, checkbox.checked);
+              saveDataToLocal();
               updateDailySummary();
             });
 
@@ -845,6 +866,7 @@
             ensureOrdersForDate(info.key);
             data.orders[info.key][name] = checkbox.checked;
             saveOrderToServer(info.key, name, checkbox.checked);
+            saveDataToLocal();
             updateDailySummaryIfAffected(info.key);
           });
 
@@ -970,9 +992,13 @@
 
       renderEmployeeList();
 
-      // サーバーから過去データを取得してから描画
-      await fetchAllOrdersFromServer();
+      // まずローカルのデータで描画
+      renderDailyTable();
+      renderWeeklyTable();
+      renderMonthlySummary();
 
+      // その後サーバーから最新データを取得してマージ→再描画
+      await fetchAllOrdersFromServer();
       renderDailyTable();
       renderWeeklyTable();
       renderMonthlySummary();
@@ -982,4 +1008,5 @@
   </script>
 </body>
 </html>
+
 
