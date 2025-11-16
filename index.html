@@ -63,6 +63,10 @@
       padding: 6px 10px;
       font-size: 16px;
     }
+    /* 日付ピッカー専用サイズ調整 */
+    #datePicker {
+      min-width: 160px;
+    }
     button {
       padding: 7px 12px;
       font-size: 16px;
@@ -190,6 +194,24 @@
       padding: 2px 0;
     }
 
+    /* 日付行用の追加クラス */
+    .row-date {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .date-input-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .day-nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
     /* ---------- スマホ向け調整 ---------- */
     @media (max-width: 600px) {
       body {
@@ -229,6 +251,19 @@
         font-size: 12px;
         padding: 3px 2px;
       }
+      /* スマホでは日付とボタンを縦並びに */
+      .row-date {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .day-nav {
+        justify-content: flex-start;
+      }
+      /* スマホ時は日付ピッカーを横いっぱいにして押しやすく */
+      #datePicker {
+        width: 100%;
+        max-width: 260px;
+      }
     }
   </style>
 </head>
@@ -236,12 +271,15 @@
 
   <div class="card">
     <h1>社内お弁当管理</h1>
+    <p style="font-size: 14px; margin:0;">
+      1食 440円（※金額計算は月次一覧で確認）／ データはこのPCのブラウザに自動保存されます。
+    </p>
   </div>
 
   <div class="card">
     <div class="tabs">
       <button class="tab-btn active" id="tab-daily">① 日次入力</button>
-      <button class="tab-btn" id="tab-weekly">② 週次入力</button>
+      <button class="tab-btn" id="tab-weekly">② 週次入力（1週間）</button>
       <button class="tab-btn" id="tab-summary">③ 月次集計</button>
       <button class="tab-btn" id="tab-settings">④ 設定</button>
     </div>
@@ -249,18 +287,22 @@
     <!-- 日次入力ビュー（縦並び） -->
     <div id="view-daily">
       <div class="layout-daily">
-        <!-- 日付（横並びでコンパクトに） -->
+        <!-- 日付（スマホではボタンが改行される） -->
         <div class="daily-block">
-          <div class="row">
-            <label for="datePicker"></label>
-            <input type="date" id="datePicker" />
-            <button id="prevDayBtn" class="small">&lt; 前日</button>
-            <button id="todayBtn" class="small">今日</button>
-            <button id="nextDayBtn" class="small">翌日 &gt;</button>
+          <div class="row row-date">
+            <div class="date-input-wrap">
+              <!-- ラベル削除して datePicker のみ -->
+              <input type="date" id="datePicker" />
+            </div>
+            <div class="day-nav">
+              <button id="prevDayBtn" class="small">&lt; 前日</button>
+              <button id="todayBtn" class="small">今日</button>
+              <button id="nextDayBtn" class="small">翌日 &gt;</button>
+            </div>
           </div>
         </div>
 
-        <!-- 社員リスト（追加UIは別タブに移動） -->
+        <!-- 社員リスト -->
         <div class="daily-block">
           <div id="orderTableWrapper">
             <table id="orderTable">
@@ -337,7 +379,7 @@
       </div>
     </div>
 
-    <!-- 設定ビュー（社員の追加など） -->
+    <!-- 設定ビュー -->
     <div id="view-settings" style="display:none;">
       <div class="section-title">社員の設定</div>
       <div class="row">
@@ -355,11 +397,6 @@
   <script>
     // ------- 定数：デフォルト社員名簿 -------
     const DEFAULT_EMPLOYEES = [
-      "会長",
-      "社長",
-      "副社長",
-      "堀内美",
-      "小俣",
       "田邉",
       "駒井",
       "高山",
@@ -370,11 +407,12 @@
       "小松",
       "山本",
       "望月",
-      "堀内俊",
+      "堀内",
       "日原",
       "三枝",
       "平井",
       "可知",
+      "水越",
       "井出",
       "萩原",
       "茂木",
@@ -390,14 +428,11 @@
       "金森",
       "白鳥",
       "植松",
-      "水越",
       "安藤"
     ];
 
     const STORAGE_KEY = "bentoAppData_v2";
     const NUM_DAILY_COLS = 4; // 名前を4列で表示
-
-    // ------- データ保存まわり -------
 
     function loadData() {
       const raw = localStorage.getItem(STORAGE_KEY);
@@ -423,8 +458,6 @@
 
     let data = loadData();
 
-    // ------- 日付関係 -------
-
     function pad2(n) {
       return n.toString().padStart(2, "0");
     }
@@ -443,13 +476,12 @@
 
     function getWeekStartMonday(date) {
       const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
-      const day = d.getDay(); // 0:日〜6:土
+      const day = d.getDay();
       const diff = (day + 6) % 7; // 月曜=0
       d.setDate(d.getDate() - diff);
       return d;
     }
 
-    // 日付ラベル：2行表示（上：月/日、下：(曜)）
     function formatWeekLabel(d) {
       const wk = ["日", "月", "火", "水", "木", "金", "土"][d.getDay()];
       const month = d.getMonth() + 1;
@@ -459,8 +491,6 @@
 
     let currentDateKey = dateToKey(new Date());
     let currentWeekStartKey = currentDateKey;
-
-    // ------- DOM要素取得 -------
 
     const tabDailyBtn = document.getElementById("tab-daily");
     const tabWeeklyBtn = document.getElementById("tab-weekly");
@@ -495,8 +525,6 @@
     const thisWeekBtn = document.getElementById("thisWeekBtn");
     const weeklyHeadRow = document.getElementById("weeklyHeadRow");
     const weeklyTableBody = document.querySelector("#weeklyTable tbody");
-
-    // ------- タブ切り替え -------
 
     function showDailyView() {
       tabDailyBtn.classList.add("active");
@@ -550,8 +578,6 @@
     tabSummaryBtn.addEventListener("click", showSummaryView);
     tabSettingsBtn.addEventListener("click", showSettingsView);
 
-    // ------- 注文データヘルパー -------
-
     function ensureOrdersForDate(dateKey) {
       if (!data.orders[dateKey]) {
         data.orders[dateKey] = {};
@@ -561,8 +587,6 @@
     function ensureOrdersForCurrentDate() {
       ensureOrdersForDate(currentDateKey);
     }
-
-    // ------- 社員リスト（設定画面用） -------
 
     function renderEmployeeList() {
       employeeList.innerHTML = "";
@@ -601,8 +625,6 @@
       }
     });
 
-    // ------- 日次テーブル描画（名前4列） -------
-
     function updateNameStyle(span, checked) {
       if (checked) {
         span.classList.add("checked");
@@ -616,7 +638,6 @@
       const orders = data.orders[currentDateKey];
 
       orderTableBody.innerHTML = "";
-
       const numCols = NUM_DAILY_COLS;
 
       for (let i = 0; i < data.employees.length; i += numCols) {
@@ -667,8 +688,6 @@
       dailySummary.textContent = `${count}食`;
     }
 
-    // ------- 日付操作（日次） -------
-
     function setCurrentDateKeyFromInput() {
       const val = datePicker.value;
       if (!val) return;
@@ -702,8 +721,6 @@
       renderDailyTable();
     });
 
-    // ------- 週次テーブル描画（1週間分＋見出し固定） -------
-
     function getWeekDatesFromStartKey(startKey) {
       const start = keyToDate(startKey);
       const list = [];
@@ -728,32 +745,30 @@
       if (!currentWeekStartKey) return;
       const weekDates = getWeekDatesFromStartKey(currentWeekStartKey);
 
-      // ヘッダー
       weeklyHeadRow.innerHTML = "";
       const thName = document.createElement("th");
       thName.textContent = "社員名";
-      thName.classList.add("sticky-col"); // 左固定
+      thName.classList.add("sticky-col");
       weeklyHeadRow.appendChild(thName);
 
       weekDates.forEach(info => {
         const th = document.createElement("th");
-        th.innerHTML = info.label;  // 2行表示用（<br>を反映）
+        th.innerHTML = info.label;
         if (info.dow === 0) {
-          th.classList.add("day-sun"); // 日曜=赤
+          th.classList.add("day-sun");
         } else if (info.dow === 6) {
-          th.classList.add("day-sat"); // 土曜=青
+          th.classList.add("day-sat");
         }
         weeklyHeadRow.appendChild(th);
       });
 
-      // 本体
       weeklyTableBody.innerHTML = "";
 
       data.employees.forEach(name => {
         const tr = document.createElement("tr");
         const tdName = document.createElement("td");
         tdName.textContent = name;
-        tdName.classList.add("sticky-col"); // 左固定
+        tdName.classList.add("sticky-col");
         tr.appendChild(tdName);
 
         weekDates.forEach(info => {
@@ -801,12 +816,10 @@
       renderWeeklyTable();
     });
 
-    // ------- 月次集計 -------
-
     function renderMonthlySummary() {
       const val = monthPicker.value;
       if (!val) return;
-      const monthStr = val; // "YYYY-MM"
+      const monthStr = val;
 
       const counts = {};
       data.employees.forEach(name => counts[name] = 0);
@@ -849,8 +862,6 @@
 
     refreshSummaryBtn.addEventListener("click", renderMonthlySummary);
 
-    // ------- CSVエクスポート（選択月の明細） -------
-
     function exportMonthlyCsv() {
       const monthStr = monthPicker.value;
       if (!monthStr) {
@@ -887,8 +898,6 @@
 
     exportCsvBtn.addEventListener("click", exportMonthlyCsv);
 
-    // ------- 初期化 -------
-
     function init() {
       const today = new Date();
       currentDateKey = dateToKey(today);
@@ -913,5 +922,3 @@
   </script>
 </body>
 </html>
-
-
