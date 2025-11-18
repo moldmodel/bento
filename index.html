@@ -360,7 +360,7 @@
           <tr>
             <th>社員名</th>
             <th>食数</th>
-            <th>金額（440円×食数）</th>
+            <th>金額（550円×食数）</th>
           </tr>
         </thead>
         <tbody>
@@ -915,7 +915,7 @@
 
       data.employees.forEach(name => {
         const meals = counts[name] || 0;
-        const amount = meals * 440;
+        const amount = meals * 550;
         totalMeals += meals;
         totalAmount += amount;
 
@@ -1008,5 +1008,6 @@
   </script>
 </body>
 </html>
+
 
 
